@@ -1,0 +1,4 @@
+#	Each line using tab to separate elements
+#	Only column 1 and 2 are used by ElWiz.js
+7359992905010173	100
+7359992894564138	600
