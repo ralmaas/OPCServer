@@ -147,7 +147,12 @@ def on_message(client, userdata, message):
         #
         # Upps: What do I do if meter NOT in table ??????
         #
-        opc_pointer = meterTable[indx]
+        try:
+            opc_pointer = meterTable[indx]
+        except:
+            print("Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            # MeterID not in table
+            return
         
         mpy_factor = float(meterTableFactor[data['data']['meterID']])
         # Some of the variables should be multiplied by mpyFactor
@@ -187,9 +192,13 @@ def on_message(client, userdata, message):
         #
         # Handle List 2
         # Find the correct memory space
-        indx = str(data['data']['meterID'])
         #printf("Value of indx is %s", indx)
-        opc_pointer = meterTable[indx]
+        try:
+            opc_pointer = meterTable[indx]
+        except:
+            print("Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            # MeterID not in table
+            return
         #
         #   One more Uppps - what if not in table
         # 
