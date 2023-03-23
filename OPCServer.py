@@ -11,6 +11,9 @@ import json
 from dataclasses import dataclass
 from pprint import pprint
 # 2023-03-23/ralm
+# V1.8
+# Fixed error if meterID not in meter-table
+#
 # V1.7
 # Rewritten some of the "flow"-logic
 #
@@ -30,7 +33,23 @@ from pprint import pprint
 # V1.3:
 #	Reading meterID using as array
 
-
+#######################################################################################
+VERSION = "1.8"
+# OPC UA
+# Configure local IP and port to be used
+# This is the IP address clients use for connection to THIS server
+url = "opc.tcp://192.168.2.68:4840"
+# MQTT
+broker = "192.168.2.200"
+port = 1883
+elwiz_topic = "meter/#"
+pub_topic = "opc"
+client_id = f'python-mqtt-{random.randint(0, 1000)}'
+#
+# Set value to "true" in order to multiply reading with column 2 from meter.txt
+# Set to "false" to fetch just the raw data received - ignoring the factor in meter.txt
+MULTIPLY = True
+#######################################################################################
 
 @dataclass
 class OPC_Class:
@@ -51,31 +70,24 @@ class OPC_Class:
     lastMeterProductionReactive: Node
     meterDate: Node
 
-
 # OPC UA
 server = Server()
-# Configure local IP and port to be used
-# This is the IP address clients use for connection to THIS server
-url = "opc.tcp://192.168.2.68:4840"
 server.set_endpoint(url)
 
-# MQTT
-# Note: Tibber Pulse only support anonymous or certificate-based MQTT-authentification
-broker = "192.168.2.200"
-port = 1883
-elwiz_topic = "meter/#"
-pub_topic = "opc"
-client_id = f'python-mqtt-{random.randint(0, 1000)}'
-
-#
-# Set value to "true" in order to multiply reading with column 2 from meter.txt
-# Set to "false" to fetch just the raw data received
-#
-MULTIPLY = True
 
 # Define the global variables
 meterTable = {}
 meterTableFactor = {}
+
+def publish(topic, value):
+     global client
+     msg = f"{value}"
+     if topic == 0:
+        topic2 = pub_topic + "/status"
+     if topic == 1:
+        topic2 = pub_topic + "/error"
+     result = client.publish(topic2, msg)
+
 
 def readMeter():
   with open('meter.txt', 'r') as f:
@@ -151,6 +163,7 @@ def on_message(client, userdata, message):
             opc_pointer = meterTable[indx]
         except:
             print("Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            publish(1, "Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
             # MeterID not in table
             return
         
@@ -197,6 +210,7 @@ def on_message(client, userdata, message):
             opc_pointer = meterTable[indx]
         except:
             print("Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            publish(1, "Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
             # MeterID not in table
             return
         #
@@ -235,11 +249,6 @@ def subscribe(client: mqtt_client, topic):
     client.subscribe(topic)
     client.on_message = on_message
 
-def publish(value):
-     global client
-     msg = f"{value}"
-     topic2 = pub_topic + "/startup"
-     result = client.publish(topic2, msg)
 
 
 # Get meterID-file
@@ -299,7 +308,8 @@ server.start()
 client = connect_mqtt()
 subscribe(client,elwiz_topic)
 client.loop_start()
-publish("OPC UA Server is running")
+# publish(0, "OPC UA Server is running")
+publish(0, "OPC UA Server version: " + str(VERSION))
 print("OPC UA Server is running")
 
 pprint(meterTableFactor)
