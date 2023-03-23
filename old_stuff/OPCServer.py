@@ -10,10 +10,7 @@ import json
 # Need to make structure
 from dataclasses import dataclass
 from pprint import pprint
-# 2023-03-23/ralm
-# V1.7
-# Rewritten some of the "flow"-logic
-#
+
 # 2023-03-21/ralm
 # V1.6
 # New names from ElWiz
@@ -49,7 +46,7 @@ class OPC_Class:
     lastMeterConsumptionReactive: Node
     lastMeterProduction: Node
     lastMeterProductionReactive: Node
-    meterDate: Node
+    #lastHourActivePower: Node
 
 
 # OPC UA
@@ -133,14 +130,12 @@ def on_message(client, userdata, message):
     print("data object:")
     pprint(data)
     print("data length is: " + str(len(data)))
-
     # print("Test for List 3")
     if b'lastMeterConsumption' in byte_:
         #
         #   I HAVE A LIST 3
         #
         print("I have a List 3")
-        pprint(data)
         # Handle List 3 data
         # Find the correct memory space
         indx = str(data['data']['meterID'])
@@ -149,14 +144,15 @@ def on_message(client, userdata, message):
         #
         opc_pointer = meterTable[indx]
         
+        # print("==> Check if meter in table: " + str(indx) + " - " + str(opc_pointer))
         mpy_factor = float(meterTableFactor[data['data']['meterID']])
+        # print("I have a 3-factor set at: " + str(mpy_factor))
         # Some of the variables should be multiplied by mpyFactor
         opc_pointer.meterID.set_value(data['data']['meterID'])
 
         opc_pointer.voltagePhase1.set_value(data['data']['voltagePhase1'])
         opc_pointer.voltagePhase2.set_value(data['data']['voltagePhase2'])
         opc_pointer.voltagePhase3.set_value(data['data']['voltagePhase3'])
-        opc_pointer.meterDate.set_value(data['data']['meterDate'])
 
         if (MULTIPLY == False):
             mpy_factor = 1.0
@@ -176,10 +172,13 @@ def on_message(client, userdata, message):
         opc_pointer.lastMeterConsumptionReactive.set_value(mpy_factor*data['data']['lastMeterConsumptionReactive'])
         opc_pointer.lastMeterProduction.set_value(mpy_factor*data['data']['lastMeterProduction'])
         opc_pointer.lastMeterProductionReactive.set_value(mpy_factor*data['data']['lastMeterProductionReactive'])
- 
+        # opc_pointer.lastHourActivePower.set_value(mpy_factor*data['data']['lastHourActivePower'])
+
         print("Reached end of List 3")
         return
-
+    print("It was not a List 3")
+    # if data['data']['voltagePhase1'] in locals():
+    # if data_size > 200:
     if b'voltagePhase1' in byte_:
         pprint(data)
         #
@@ -215,11 +214,9 @@ def on_message(client, userdata, message):
         except:
             opc_pointer.currentL2.set_value(0.0)
         opc_pointer.currentL3.set_value(mpy_factor*data['data']['currentL3'])
-        print("Reached end of List 2")
         return
-
     # Handle List 1
-    print("Either a bug, List1 or status - not handled")
+    print("Either a bug or List 1 is not handled")
     return
 
 def subscribe(client: mqtt_client, topic):
@@ -264,7 +261,7 @@ for indx in meterTable:
         Param.add_variable(addSpace, "lastMeterConsumptionReactive", 0),
         Param.add_variable(addSpace, "lastMeterProduction", 0),
         Param.add_variable(addSpace, "lastMeterProductionReactive", 0),
-        Param.add_variable(addSpace, "meterDate", 0)
+        # Param.add_variable(addSpace, "lastHourActivePower", 0)
     )
     meterTable[indx].meterID.set_writable()
     meterTable[indx].power.set_writable()
@@ -281,8 +278,8 @@ for indx in meterTable:
     meterTable[indx].lastMeterConsumptionReactive.set_writable()
     meterTable[indx].lastMeterProduction.set_writable()
     meterTable[indx].lastMeterProductionReactive.set_writable()
-    meterTable[indx].meterDate.set_writable()
-    
+    # meterTable[indx].lastHourActivePower.set_writable()
+
 # Start OPC UA
 server.start()
 
