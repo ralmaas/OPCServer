@@ -9,7 +9,7 @@ from paho.mqtt import client as mqtt_client
 import json
 # Need to make structure
 from dataclasses import dataclass
-from pprint import pprint
+# from pprint import pprint
 
 # 2023-03-21/ralm
 # V1.6
@@ -74,24 +74,25 @@ MULTIPLY = True
 meterTable = {}
 meterTableFactor = {}
 
+
 def readMeter():
-  with open('meter.txt', 'r') as f:
-    for line in f:
-      print(line)
-      k = line.split()
-      print(k[0])
-      print(k[1])
-      if k[0] != "#":
-        meterTableFactor[k[0]] = k[1]
-        meterTable[k[0]] = k[1]
 
-def getMeter(key):
-  try:
-    meterFactorTable[key]
-    return meterTable[key]
-  except:
-    return 0
+    file1 = open('meter.txt', 'r')
+    while True:
 
+        # Get next line from file
+        line = file1.readline()
+        lineArray = line.split("\t")
+        # if line is empty
+        # end of file is reached
+        if not line:
+            break
+        if (lineArray[0] != "#"):
+            # Add a temporary value to the array - later to be a pointer to the OPC_Class
+            meterTable[lineArray[0]] = lineArray[1]
+            meterTableFactor[lineArray[0]] = int(lineArray[1])
+            # print("Reading Meter table %s with factor %d" % (lineArray[0],meterTableFactor[lineArray[0]] ))
+    file1.close()
 
 def connect_mqtt():
     def on_connect(client, userdata, flags, rc):
@@ -108,30 +109,23 @@ def connect_mqtt():
 
 def on_message(client, userdata, message):
     global meterTable
+    global meterTableFactor
     global MULTIPLY
 
     # print("message received " ,str(message.payload.decode("utf-8")))
     json_data = str(message.payload.decode("utf-8"))
-    print("JSON DATA:")
-    pprint(json_data)
     try:
-        print("Convert to dict")
-        print(json_data)
+        # print("Convert to dict")
+        # print(json_data)
         data = json.loads(json_data)
     except ValueError:
         print("Decoding Failed")
-        return
-    
-    byte_ = bytes(json_data, "utf-8")
-    print("Length of object is " + str(len(byte_)))
-    print("Dump of byte_:")
-    pprint(byte_)
-    data_size = len(byte_)
-    print("data object:")
-    pprint(data)
-    print("data length is: " + str(len(data)))
-    # print("Test for List 3")
-    if b'lastMeterConsumption' in byte_:
+
+    try:
+        # print("Test for List 3")
+        # print("List3 identifier: ", data['data']['cumuHourPowImpActive'])
+        # Test if object exist - if not fall through to next except!
+        data['data']['cumuHourPowImpActive']
         #
         #   I HAVE A LIST 3
         #
@@ -143,23 +137,22 @@ def on_message(client, userdata, message):
         # Upps: What do I do if meter NOT in table ??????
         #
         opc_pointer = meterTable[indx]
-        
         # print("==> Check if meter in table: " + str(indx) + " - " + str(opc_pointer))
         mpy_factor = float(meterTableFactor[data['data']['meterID']])
         # print("I have a 3-factor set at: " + str(mpy_factor))
         # Some of the variables should be multiplied by mpyFactor
         opc_pointer.meterID.set_value(data['data']['meterID'])
 
-        opc_pointer.voltagePhase1.set_value(data['data']['voltagePhase1'])
-        opc_pointer.voltagePhase2.set_value(data['data']['voltagePhase2'])
-        opc_pointer.voltagePhase3.set_value(data['data']['voltagePhase3'])
+        opc_pointer.voltageL1.set_value(data['data']['voltagePhaseL1'])
+        opc_pointer.voltageL2.set_value(data['data']['voltagePhase2'])
+        opc_pointer.voltageL3.set_value(data['data']['voltagePhase3'])
 
         if (MULTIPLY == False):
-            mpy_factor = 1.0
-        opc_pointer.power.set_value(mpy_factor*data['data']['power'])
-        opc_pointer.powerReactive.set_value(mpy_factor*data['data']['powerReactive'])
-        opc_pointer.powerProduction.set_value(mpy_factor*data['data']['powerProduction'])
-        opc_pointer.powerProductionReactive.set_value(mpy_factor*data['data']['powerProductionReactive'])
+           mpy_factor = 1.0
+        opc_pointer.powImpActive.set_value(mpy_factor*data['data']['powImpActive'])
+        opc_pointer.powExpActive.set_value(mpy_factor*data['data']['powExpActive'])
+        opc_pointer.powImpReactive.set_value(mpy_factor*float(data['data']['powImpReactive']))
+        opc_pointer.powExpReactive.set_value(mpy_factor*data['data']['powExpReactive'])
         opc_pointer.currentL1.set_value(mpy_factor*data['data']['currentL1'])
         try:
             opc_pointer.currentL2.set_value(mpy_factor*data['data']['currentL2']) 
@@ -176,48 +169,49 @@ def on_message(client, userdata, message):
 
         print("Reached end of List 3")
         return
-    print("It was not a List 3")
-    # if data['data']['voltagePhase1'] in locals():
-    # if data_size > 200:
-    if b'voltagePhase1' in byte_:
-        pprint(data)
-        #
-        #   I HAVE A LIST 2
-        #
-        # Handle List 2
-        # Find the correct memory space
-        indx = str(data['data']['meterID'])
-        #printf("Value of indx is %s", indx)
-        opc_pointer = meterTable[indx]
-        #
-        #   One more Uppps - what if not in table
-        # 
-        # print("==> Check if meter in table: " + str(indx) + " - " + str(opc_pointer))
-        # print("==> Check if meter in table: " + indx + " ====>>> " + str(opc_pointer))
-
-        mpy_factor = float(meterTableFactor[data['data']['meterID']])
-        opc_pointer.meterID.set_value(data['data']['meterID'])
-        opc_pointer.voltagePhase1.set_value(data['data']['voltagePhase1'])
-        opc_pointer.voltagePhase2.set_value(data['data']['voltagePhase2'])
-        opc_pointer.voltagePhase3.set_value(data['data']['voltagePhase3'])
-        #printf("Value of V1 is: %f", data['data']['voltagePhase1'])
-
-        if (MULTIPLY == False):
-            mpy_factor = 1.0
-        opc_pointer.power.set_value(mpy_factor*data['data']['power'])
-        opc_pointer.powerReactive.set_value(mpy_factor*data['data']['powerReactive'])
-        opc_pointer.powerProduction.set_value(mpy_factor*data['data']['powerProduction'])
-        opc_pointer.powerProductionReactive.set_value(mpy_factor*data['data']['powerProductionReactive'])
-        opc_pointer.currentL1.set_value(mpy_factor*data['data']['currentL1'])
+    except:
+        print("It was not a List 3")
         try:
-            opc_pointer.currentL2.set_value(mpy_factor*data['data']['currentL2']) 
+            data['data']['voltagePhase1']
+            #
+            #   I HAVE A LIST 2
+            #
+            # Handle List 2
+            # Find the correct memory space
+            indx = str(data['data']['meterID'])
+            #printf("Value of indx is %s", indx)
+            opc_pointer = meterTable[indx]
+            #
+            #   One more Uppps - what if not in table
+            # 
+            # print("==> Check if meter in table: " + str(indx) + " - " + str(opc_pointer))
+            # print("==> Check if meter in table: " + indx + " ====>>> " + str(opc_pointer))
+
+            mpy_factor = float(meterTableFactor[data['data']['meterID']])
+            opc_pointer.meterID.set_value(data['data']['meterID'])
+            opc_pointer.voltagePhase1.set_value(data['data']['voltagePhase1'])
+            opc_pointer.voltagePhase2.set_value(data['data']['voltagePhase2'])
+            opc_pointer.voltagePhase3.set_value(data['data']['voltagePhase3'])
+            #printf("Value of V1 is: %f", data['data']['voltagePhase1'])
+ 
+            if (MULTIPLY == False):
+               mpy_factor = 1.0
+            opc_pointer.power.set_value(mpy_factor*data['data']['power'])
+            opc_pointer.powerReactive.set_value(mpy_factor*data['data']['powerReactive'])
+            opc_pointer.powerProduction.set_value(mpy_factor*data['data']['powerProduction'])
+            opc_pointer.powerProductionReactive.set_value(mpy_factor*data['data']['powerProductionReactive'])
+            opc_pointer.currentL1.set_value(mpy_factor*data['data']['currentL1'])
+            try:
+                opc_pointer.currentL2.set_value(mpy_factor*data['data']['currentL2']) 
+            except:
+                opc_pointer.currentL2.set_value(0.0)
+            opc_pointer.currentL3.set_value(mpy_factor*data['data']['currentL3'])
+            return
         except:
-            opc_pointer.currentL2.set_value(0.0)
-        opc_pointer.currentL3.set_value(mpy_factor*data['data']['currentL3'])
-        return
-    # Handle List 1
-    print("Either a bug or List 1 is not handled")
-    return
+            # Handle List 1
+            print("Either a bug or List 1 is not handled")
+            return
+    # print("End of on_message")
 
 def subscribe(client: mqtt_client, topic):
     client.subscribe(topic)
@@ -232,6 +226,14 @@ def publish(value):
 
 # Get meterID-file
 readMeter()
+
+print("Test lookup to meter-table")
+# print(meterTable['7359992894592315'])
+
+print("Loop through table:")
+for indx in meterTable:
+    print(indx)
+    print("\t" + str(meterTable[indx]))
 
 name = "OPCUA_SIMULATION_SERVER"
 addSpace = server.register_namespace(name)
@@ -290,10 +292,7 @@ client.loop_start()
 publish("OPC UA Server is running")
 print("OPC UA Server is running")
 
-pprint(meterTableFactor)
-pprint(meterTable)
 print("Server started at []".format(url))
-
 while True:
     # Just loop and copy MQTT-received data to OPC Address-space
     # meterID.set_value(_meterID)
