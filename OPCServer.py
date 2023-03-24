@@ -31,27 +31,9 @@ from pprint import pprint
 #	Reading meterID using as array
 
 
-
-@dataclass
-class OPC_Class:
-    meterID: Node
-    power: Node
-    powerReactive: Node
-    powerProduction: Node
-    powerProductionReactive: Node
-    voltagePhase1: Node
-    voltagePhase2: Node
-    voltagePhase3: Node
-    currentL1: Node
-    currentL2: Node
-    currentL3: Node
-    lastMeterConsumption: Node
-    lastMeterConsumptionReactive: Node
-    lastMeterProduction: Node
-    lastMeterProductionReactive: Node
-    meterDate: Node
-
-
+###################################################
+# Configuration parameters:
+###################################################
 # OPC UA
 server = Server()
 # Configure local IP and port to be used
@@ -72,18 +54,51 @@ client_id = f'python-mqtt-{random.randint(0, 1000)}'
 # Set to "false" to fetch just the raw data received
 #
 MULTIPLY = True
+###################################################
+
+VERSION = "1.8"
+DEBUG = True
+
+@dataclass
+class OPC_Class:
+    meterID: Node
+    power: Node
+    powerReactive: Node
+    powerProduction: Node
+    powerProductionReactive: Node
+    voltagePhase1: Node
+    voltagePhase2: Node
+    voltagePhase3: Node
+    currentL1: Node
+    currentL2: Node
+    currentL3: Node
+    lastMeterConsumption: Node
+    lastMeterConsumptionReactive: Node
+    lastMeterProduction: Node
+    lastMeterProductionReactive: Node
+    meterDate: Node
 
 # Define the global variables
 meterTable = {}
 meterTableFactor = {}
 
+def subscribe(client: mqtt_client, topic):
+    client.subscribe(topic)
+    client.on_message = on_message
+
+def publish(topic, value):
+	global client
+	msg = f"{value}"
+	if topic == 0:
+		topic2 = pub_topic + "/status"
+	if topic == 1:
+		topic2 = pub_topic + "/error"
+	result = client.publish(topic2, msg)
+
 def readMeter():
   with open('meter.txt', 'r') as f:
     for line in f:
-      print(line)
       k = line.split()
-      print(k[0])
-      print(k[1])
       if k[0] != "#":
         meterTableFactor[k[0]] = k[1]
         meterTable[k[0]] = k[1]
@@ -147,8 +162,13 @@ def on_message(client, userdata, message):
         #
         # Upps: What do I do if meter NOT in table ??????
         #
-        opc_pointer = meterTable[indx]
-        
+        try:
+            opc_pointer = meterTable[indx]
+        except:
+            print("Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            publish(1, "Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            return
+
         mpy_factor = float(meterTableFactor[data['data']['meterID']])
         # Some of the variables should be multiplied by mpyFactor
         opc_pointer.meterID.set_value(data['data']['meterID'])
@@ -189,7 +209,16 @@ def on_message(client, userdata, message):
         # Find the correct memory space
         indx = str(data['data']['meterID'])
         #printf("Value of indx is %s", indx)
-        opc_pointer = meterTable[indx]
+        try:
+            opc_pointer = meterTable[indx]
+        except:
+				# MeterID not in table
+            print("Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            # MeterID not in table
+            publish(1, "Error - MeterID " + str(data['data']['meterID']) + " is not in the meter-table!")
+            return
+
+        # opc_pointer = meterTable[indx]
         #
         #   One more Uppps - what if not in table
         # 
@@ -221,16 +250,6 @@ def on_message(client, userdata, message):
     # Handle List 1
     print("Either a bug, List1 or status - not handled")
     return
-
-def subscribe(client: mqtt_client, topic):
-    client.subscribe(topic)
-    client.on_message = on_message
-
-def publish(value):
-     global client
-     msg = f"{value}"
-     topic2 = pub_topic + "/startup"
-     result = client.publish(topic2, msg)
 
 
 # Get meterID-file
@@ -290,7 +309,7 @@ server.start()
 client = connect_mqtt()
 subscribe(client,elwiz_topic)
 client.loop_start()
-publish("OPC UA Server is running")
+publish(0, "OPC UA Server is running; version: " + str(VERSION))
 print("OPC UA Server is running")
 
 pprint(meterTableFactor)
