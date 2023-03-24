@@ -33,8 +33,34 @@ from pprint import pprint
 # V1.3:
 #	Reading meterID using as array
 
-OK
+# ========================================
+# Configuration section
+# ========================================
 
+# OPC UA
+# Configure local IP and port to be used
+# This is the IP address clients use for connection to THIS server
+url = "opc.tcp://192.168.2.68:4840"
+
+# MQTT
+broker = "192.168.2.200"
+port = 1883
+elwiz_topic = "meter/#"
+pub_topic = "opc"
+
+# other
+# Set DEBUG to True or False
+DEBUG = False
+VERSION = "1.8"
+#
+# Set value to "true" in order to multiply reading with column 2 from meter.txt
+# Set to "false" to fetch just the raw data received
+#
+MULTIPLY = True
+
+# ========================================
+# Code section
+# ========================================
 @dataclass
 class OPC_Class:
     meterID: Node
@@ -57,24 +83,9 @@ class OPC_Class:
 
 # OPC UA
 server = Server()
-# Configure local IP and port to be used
-# This is the IP address clients use for connection to THIS server
-url = "opc.tcp://192.168.2.68:4840"
+client_id = f'python-mqtt-{random.randint(0, 1000)}'
 server.set_endpoint(url)
 
-# MQTT
-# Note: Tibber Pulse only support anonymous or certificate-based MQTT-authentification
-broker = "192.168.2.200"
-port = 1883
-elwiz_topic = "meter/#"
-pub_topic = "opc"
-client_id = f'python-mqtt-{random.randint(0, 1000)}'
-
-#
-# Set value to "true" in order to multiply reading with column 2 from meter.txt
-# Set to "false" to fetch just the raw data received
-#
-MULTIPLY = True
 
 # Define the global variables
 meterTable = {}
@@ -93,15 +104,6 @@ def publish(topic, value):
 def subscribe(client: mqtt_client, topic):
     client.subscribe(topic)
     client.on_message = on_message
-
-def publish(topic, value):
-	global client
-	msg = f"{value}"
-	if topic == 0:
-		topic2 = pub_topic + "/status"
-	if topic == 1:
-		topic2 = pub_topic + "/error"
-	result = client.publish(topic2, msg)
 
 def readMeter():
   with open('meter.txt', 'r') as f:
@@ -138,39 +140,46 @@ def on_message(client, userdata, message):
 
     # print("message received " ,str(message.payload.decode("utf-8")))
     json_data = str(message.payload.decode("utf-8"))
-    print("JSON DATA:")
-    pprint(json_data)
+    if DEBUG:
+        print("JSON DATA:")
+        pprint(json_data)
     try:
-        print("Convert to dict")
-        print(json_data)
+        if DEBUG:
+            print("Convert to dict")
+            print(json_data)
         data = json.loads(json_data)
     except ValueError:
-        print("Decoding Failed")
+        if DEBUG:
+            print("Decoding Failed")
         return
     
     byte_ = bytes(json_data, "utf-8")
-    print("Length of object is " + str(len(byte_)))
-    print("Dump of byte_:")
-    pprint(byte_)
+    if DEBUG:
+        print("Length of object is " + str(len(byte_)))
+        print("Dump of byte_:")
+        pprint(byte_)
     data_size = len(byte_)
-    print("data object:")
-    pprint(data)
-    print("data length is: " + str(len(data)))
+    if DEBUG:
+        print("data object:")
+        pprint(data)
+        print("data length is: " + str(len(data)))
 
-    # print("Test for List 3")
     if b'lastMeterConsumption' in byte_:
         #
         #   I HAVE A LIST 3
         #
-        print("I have a List 3")
-        pprint(data)
+        if DEBUG:
+            print("I have a List 3")
+            pprint(data)
         # Handle List 3 data
         # Find the correct memory space
         indx = str(data['data']['meterID'])
-        #
-        # Upps: What do I do if meter NOT in table ??????
-        #
-        opc_pointer = meterTable[indx]
+        try:
+            opc_pointer = meterTable[indx]
+        except:
+            print("Error: Meter " + str(indx) + " is not found in file meter.txt")
+            publish(1, "Error: Meter " + str(indx) + " is not found in file meter.txt")
+            return
         
         mpy_factor = float(meterTableFactor[data['data']['meterID']])
         # Some of the variables should be multiplied by mpyFactor
@@ -200,30 +209,31 @@ def on_message(client, userdata, message):
         opc_pointer.lastMeterProduction.set_value(mpy_factor*data['data']['lastMeterProduction'])
         opc_pointer.lastMeterProductionReactive.set_value(mpy_factor*data['data']['lastMeterProductionReactive'])
  
-        print("Reached end of List 3")
+        if DEBUG:
+            print("Reached end of List 3")
         return
 
     if b'voltagePhase1' in byte_:
-        pprint(data)
+        if DEBUG:
+            pprint(data)
         #
         #   I HAVE A LIST 2
         #
         # Handle List 2
         # Find the correct memory space
-        #printf("Value of indx is %s", indx)
-        opc_pointer = meterTable[indx]
-        #
-        #   One more Uppps - what if not in table
-        # 
-        # print("==> Check if meter in table: " + str(indx) + " - " + str(opc_pointer))
-        # print("==> Check if meter in table: " + indx + " ====>>> " + str(opc_pointer))
+        indx = str(data['data']['meterID'])
+        try:
+            opc_pointer = meterTable[indx]
+        except:
+            print("Error: Meter " + str(indx) + " is not found in file meter.txt")
+            publish(1, "Error: Meter " + str(indx) + " is not found in file meter.txt")
+            return
 
         mpy_factor = float(meterTableFactor[data['data']['meterID']])
         opc_pointer.meterID.set_value(data['data']['meterID'])
         opc_pointer.voltagePhase1.set_value(data['data']['voltagePhase1'])
         opc_pointer.voltagePhase2.set_value(data['data']['voltagePhase2'])
         opc_pointer.voltagePhase3.set_value(data['data']['voltagePhase3'])
-        #printf("Value of V1 is: %f", data['data']['voltagePhase1'])
 
         if (MULTIPLY == False):
             mpy_factor = 1.0
@@ -237,24 +247,18 @@ def on_message(client, userdata, message):
         except:
             opc_pointer.currentL2.set_value(0.0)
         opc_pointer.currentL3.set_value(mpy_factor*data['data']['currentL3'])
-        print("Reached end of List 2")
+        if DEBUG: 
+            print("Reached end of List 2")
         return
 
-    # Handle List 1
-    print("Either a bug, List1 or status - not handled")
+    # Handle other topics....
+    if DEBUG:
+        print("Either a bug, List1 or status - not handled")
     return
 
-def subscribe(client: mqtt_client, topic):
-    client.subscribe(topic)
-    client.on_message = on_message
-
-def publish(value):
-     global client
-     msg = f"{value}"
-     topic2 = pub_topic + "/startup"
-     result = client.publish(topic2, msg)
-
-
+#################################################################
+# main()
+#################################################################
 # Get meterID-file
 readMeter()
 
@@ -267,8 +271,6 @@ ServerInfo = node.add_object(addSpace, "OPCUA Simulatom Server")
 
 print("Loop through table and add class elements:")
 for indx in meterTable:
-    # print(indx)
-    # print("\t" + str(meterTable[indx]))
     Param = node.add_object(addSpace, str(indx))
     meterTable[indx] = OPC_Class(
         Param.add_variable(addSpace, "meterID", ""),
@@ -312,12 +314,14 @@ server.start()
 client = connect_mqtt()
 subscribe(client,elwiz_topic)
 client.loop_start()
-publish("OPC UA Server is running")
+publish(0, "OPC UA Serve; Version: " + str(VERSION))
 print("OPC UA Server is running")
 
-pprint(meterTableFactor)
-pprint(meterTable)
+if DEBUG:
+    pprint(meterTableFactor)
+    pprint(meterTable)
 print("Server started at []".format(url))
+publish(0, "Server started at []".format(url))
 
 while True:
     # Just loop and copy MQTT-received data to OPC Address-space
