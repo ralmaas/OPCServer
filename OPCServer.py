@@ -33,7 +33,7 @@ from pprint import pprint
 # V1.3:
 #	Reading meterID using as array
 
-
+OK
 
 @dataclass
 class OPC_Class:
