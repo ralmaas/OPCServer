@@ -10,7 +10,9 @@ Current version is 1.18
 2023-03-23/ralm
 V1.8
 Fixed error if meterID not in meter-table
+Added MQTT-messages at startup and when error
 
+2023-03-21/ralm
 V1.7
 Rewritten some of the "flow"-logic
 
